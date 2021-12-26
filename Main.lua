@@ -1,7 +1,8 @@
 --[[
     Phantom Forces Cheat
         - Herrtt
-
+    
+    Discord: discord.gg/NMCv3pMJf8
 
     Supports
         * No Fall Damage
