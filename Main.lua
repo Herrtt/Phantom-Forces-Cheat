@@ -1,8 +1,7 @@
 --[[
     Phantom Forces Cheat
         - Herrtt
-    
-    Discord: discord.gg/NMCv3pMJf8
+
 
     Supports
         * No Fall Damage
@@ -28,7 +27,13 @@ local settings = {
 
     headshotchanceenabled = true,
     headshotchance = 25,
-    
+
+    --
+
+    gunVisuals = true,
+    deadVisuals = true,
+    colorEffect = true,
+
     --
 
     fov = 350,
@@ -279,7 +284,7 @@ do
             local new = ""
             local p = p or 0
             for i,v in pairs(data) do
-                local i1,v1
+                local i1,camera
                 local t0,t1 = typeof(i), typeof(v)
 
 				local a,b
@@ -299,16 +304,16 @@ do
                 if t1 == "Instance" then
                     p = p + 1
                     extra[p] = v
-                    v1 = types[t1] .. hex_encode(p, 2)
+                    camera = types[t1] .. hex_encode(p, 2)
                 else
-                    v1, b = encode(v, p)
+                    camera, b = encode(v, p)
 					if b then
 						for i,v in pairs(b) do
 							extra[i] = v
 						end
 					end
                 end
-                new = new .. i1 .. v1
+                new = new .. i1 .. camera
             end
             return s .. #new .. "." .. new, extra
 		elseif type == "Instance" then
@@ -451,14 +456,14 @@ local utility do
     local players = servs.Players
     local locpl = players.LocalPlayer
     local mouse = locpl:GetMouse()
-    local camera = workspace.CurrentCamera
+    local currentcamera = workspace.CurrentCamera
     
     local findFirstChildOfClass = game.FindFirstChildOfClass
     local isDescendantOf = game.IsDescendantOf    
 
     local getPlayers = players.GetPlayers
-    local getPartsObscuringTarget = camera.GetPartsObscuringTarget
-    local worldToViewportPoint = camera.WorldToViewportPoint
+    local getPartsObscuringTarget = currentcamera.GetPartsObscuringTarget
+    local worldToViewportPoint = currentcamera.WorldToViewportPoint
     local raynew = Ray.new
     local findPartOnRayWithIgnoreList = workspace.FindPartOnRayWithIgnoreList
     local findFirstChild = game.FindFirstChild
@@ -482,487 +487,8 @@ local utility do
         return hit, pos, normal, material
     end
 
-
-
---- value-to-string: value, string (out), level (indentation), parent table, var name, is from tovar
-function v2s(v, l, p, n, vtv, i, pt, path, tables, tI)
-    if not tI then
-        tI = {0}
-    else
-        tI[1] += 1
-    end
-    if typeof(v) == "number" then
-        if v == math.huge then
-            return "math.huge"
-        elseif tostring(v):match("nan") then
-            return "0/0 --[[NaN]]"
-        end
-        return tostring(v)
-    elseif typeof(v) == "boolean" then
-        return tostring(v)
-    elseif typeof(v) == "string" then
-        return formatstr(v, l)
-    elseif typeof(v) == "function" then
-        return f2s(v)
-    elseif typeof(v) == "table" then
-        return t2s(v, l, p, n, vtv, i, pt, path, tables, tI)
-    elseif typeof(v) == "Instance" then
-        return i2p(v)
-    elseif typeof(v) == "userdata" then
-        return "newproxy(true)"
-    elseif type(v) == "userdata" then
-        return u2s(v)
-    elseif type(v) == "vector" then
-        return string.format("Vector3.new(%s, %s, %s)", v2s(v.X), v2s(v.Y), v2s(v.Z))
-    else
-        return "nil --[[" .. typeof(v) .. "]]"
-    end
-end
-
---- value-to-variable
---- @param t any
-function v2v(t)
-    topstr = ""
-    bottomstr = ""
-    getnilrequired = false
-    local ret = ""
-    local count = 1
-    for i, v in pairs(t) do
-        if type(i) == "string" and i:match("^[%a_]+[%w_]*$") then
-            ret = ret .. "local " .. i .. " = " .. v2s(v, nil, nil, i, true) .. "\n"
-        elseif tostring(i):match("^[%a_]+[%w_]*$") then
-            ret = ret .. "local " .. tostring(i):lower() .. "_" .. tostring(count) .. " = " .. v2s(v, nil, nil, tostring(i):lower() .. "_" .. tostring(count), true) .. "\n"
-        else
-            ret = ret .. "local " .. type(v) .. "_" .. tostring(count) .. " = " .. v2s(v, nil, nil, type(v) .. "_" .. tostring(count), true) .. "\n"
-        end
-        count = count + 1
-    end
-    if getnilrequired then
-        topstr = "function getNil(name,class) for _,v in pairs(getnilinstances())do if v.ClassName==class and v.Name==name then return v;end end end\n" .. topstr
-    end
-    if #topstr > 0 then
-        ret = topstr .. "\n" .. ret
-    end
-    if #bottomstr > 0 then
-        ret = ret .. bottomstr
-    end
-    return ret
-end
-
---- table-to-string
---- @param t table
---- @param l number
---- @param p table
---- @param n string
---- @param vtv boolean
---- @param i any
---- @param pt table
---- @param path string
---- @param tables table
---- @param tI table
-function t2s(t, l, p, n, vtv, i, pt, path, tables, tI)
-    local globalIndex = table.find(getgenv(), t) -- checks if table is a global
-    if type(globalIndex) == "string" then
-        return globalIndex
-    end
-    if not tI then
-        tI = {0}
-    end
-    if not path then -- sets path to empty string (so it doesn't have to manually provided every time)
-        path = ""
-    end
-    if not l then -- sets the level to 0 (for indentation) and tables for logging tables it already serialized
-        l = 0
-        tables = {}
-    end
-    if not p then -- p is the previous table but doesn't really matter if it's the first
-        p = t
-    end
-    for _, v in pairs(tables) do -- checks if the current table has been serialized before
-        if n and rawequal(v, t) then
-            bottomstr = bottomstr .. "\n" .. tostring(n) .. tostring(path) .. " = " .. tostring(n) .. tostring(({v2p(v, p)})[2])
-            return "{} --[[DUPLICATE]]"
-        end
-    end
-    table.insert(tables, t) -- logs table to past tables
-    local s =  "{" -- start of serialization
-    local size = 0
-    l = l + indent -- set indentation level
-    for k, v in pairs(t) do -- iterates over table
-        size = size + 1 -- changes size for max limit
-        if size > (_G.SimpleSpyMaxTableSize or 1000) then
-            s = s .. "\n" .. string.rep(" ", l) .. "-- MAXIMUM TABLE SIZE REACHED, CHANGE '_G.SimpleSpyMaxTableSize' TO ADJUST MAXIMUM SIZE "
-            break
-        end
-        if rawequal(k, t) then -- checks if the table being iterated over is being used as an index within itself (yay, lua)
-            bottomstr = bottomstr .. "\n" .. tostring(n) .. tostring(path) .. "[" .. tostring(n) .. tostring(path) .. "]" .. " = " .. (rawequal(v, k) and tostring(n) .. tostring(path) or v2s(v, l, p, n, vtv, k, t, path .. "[" .. tostring(n) .. tostring(path) .. "]", tables))
-            size -= 1
-            continue
-        end
-        local currentPath = "" -- initializes the path of 'v' within 't'
-        if type(k) == "string" and k:match("^[%a_]+[%w_]*$") then -- cleanly handles table path generation (for the first half)
-            currentPath = "." .. k
-        else
-            currentPath = "[" .. k2s(k, l, p, n, vtv, k, t, path .. currentPath, tables, tI) .. "]"
-        end
-        if size % 100 == 0 then
-            scheduleWait()
-        end
-        -- actually serializes the member of the table
-        s = s .. "\n" .. string.rep(" ", l) .. "[" .. k2s(k, l, p, n, vtv, k, t, path .. currentPath, tables, tI) .. "] = " .. v2s(v, l, p, n, vtv, k, t, path .. currentPath, tables, tI) .. ","
-    end
-    if #s > 1 then -- removes the last comma because it looks nicer (no way to tell if it's done 'till it's done so...)
-        s = s:sub(1, #s - 1)
-    end
-    if size > 0 then -- cleanly indents the last curly bracket
-        s = s .. "\n" .. string.rep(" ", l - indent)
-    end
-    return s .. "}"
-end
-
---- key-to-string
-function k2s(v, ...)
-    if keyToString then
-        if typeof(v) == "userdata" and getrawmetatable(v) then
-            return string.format('"<void> (%s)" --[[Potentially hidden data (tostring in SimpleSpy:HookRemote/GetRemoteFiredSignal at your own risk)]]', safetostring(v))
-        elseif typeof(v) == "userdata" then
-            return string.format('"<void> (%s)"', safetostring(v))
-        elseif type(v) == "userdata" and typeof(v) ~= "Instance" then
-            return string.format('"<%s> (%s)"', typeof(v), tostring(v))
-        elseif type(v) == "function" then
-            return string.format('"<Function> (%s)"', tostring(v))
-        end
-    end
-    return v2s(v, ...)
-end
-
---- function-to-string
-function f2s(f)
-    for k, x in pairs(getgenv()) do
-        local isgucci, gpath
-        if rawequal(x, f) then
-            isgucci, gpath = true, ""
-        elseif type(x) == "table" then
-            isgucci, gpath = v2p(f, x)
-        end
-        if isgucci and type(k) ~= "function" then
-            if type(k) == "string" and k:match("^[%a_]+[%w_]*$") then
-                return k .. gpath
-            else
-                return "getgenv()[" .. v2s(k) .. "]" .. gpath
-            end
-        end
-    end
-    if funcEnabled and debug.getinfo(f).name:match("^[%a_]+[%w_]*$") then
-        return "function()end --[[" .. debug.getinfo(f).name .. "]]"
-    end
-    return "function()end --[[" .. tostring(f) .. "]]"
-end
-
---- instance-to-path
---- @param i userdata
-function i2p(i)
-    local player = getplayer(i)
-    local parent = i
-    local out = ""
-    if parent == nil then
-        return "nil"
-    elseif player then
-        while true do
-            if parent and parent == player.Character then
-                if player == Players.LocalPlayer then
-                    return 'game:GetService("Players").LocalPlayer.Character' .. out
-                else
-                    return i2p(player) .. ".Character" .. out
-                end
-            else
-                if parent.Name:match("[%a_]+[%w+]*") ~= parent.Name then
-                    out = ':FindFirstChild(' .. formatstr(parent.Name) .. ')' .. out
-                else
-                    out = "." .. parent.Name .. out
-                end
-            end
-            parent = parent.Parent
-        end
-    elseif parent ~= game then
-        while true do
-            if parent and parent.Parent == game then
-                local service = game:FindService(parent.ClassName)
-                if service then
-                    if parent.ClassName == "Workspace" then
-                        return "workspace" .. out
-                    else
-                        return 'game:GetService("' .. service.ClassName .. '")' .. out
-                    end
-                else
-                    if parent.Name:match("[%a_]+[%w_]*") then
-                        return "game." .. parent.Name .. out
-                    else
-                        return 'game:FindFirstChild(' .. formatstr(parent.Name) .. ')' .. out
-                    end
-                end
-            elseif parent.Parent == nil then
-                getnilrequired = true
-                return 'getNil(' .. formatstr(parent.Name) .. ', "' .. parent.ClassName .. '")' .. out
-            elseif parent == Players.LocalPlayer then
-                out = ".LocalPlayer" .. out
-            else
-                if parent.Name:match("[%a_]+[%w_]*") ~= parent.Name then
-                    out = ':FindFirstChild(' .. formatstr(parent.Name) .. ')' .. out
-                else
-                    out = "." .. parent.Name .. out
-                end
-            end
-            parent = parent.Parent
-        end
-    else
-        return "game"
-    end
-end
-
---- userdata-to-string: userdata
---- @param u userdata
-function u2s(u)
-    if typeof(u) == "TweenInfo" then
-        -- TweenInfo
-        return "TweenInfo.new(" ..tostring(u.Time) .. ", Enum.EasingStyle." .. tostring(u.EasingStyle) .. ", Enum.EasingDirection." .. tostring(u.EasingDirection) .. ", " .. tostring(u.RepeatCount) .. ", " .. tostring(u.Reverses) .. ", " .. tostring(u.DelayTime) .. ")"
-    elseif typeof(u) == "Ray" then
-        -- Ray
-        return "Ray.new(" .. u2s(u.Origin) .. ", " .. u2s(u.Direction) .. ")"
-    elseif typeof(u) == "NumberSequence" then
-        -- NumberSequence
-        local ret = "NumberSequence.new("
-        for i, v in pairs(u.KeyPoints) do
-            ret = ret .. tostring(v)
-            if i < #u.Keypoints then
-                ret = ret .. ", "
-            end
-        end
-        return ret .. ")"
-    elseif typeof(u) == "DockWidgetPluginGuiInfo" then
-        -- DockWidgetPluginGuiInfo
-        return "DockWidgetPluginGuiInfo.new(Enum.InitialDockState" .. tostring(u) .. ")"
-    elseif typeof(u) == "ColorSequence" then
-        -- ColorSequence
-        local ret = "ColorSequence.new("
-        for i, v in pairs(u.KeyPoints) do
-            ret = ret .. "Color3.new(" .. tostring(v) .. ")"
-            if i < #u.Keypoints then
-                ret = ret .. ", "
-            end
-        end
-        return ret .. ")"
-    elseif typeof(u) == "BrickColor" then
-        -- BrickColor
-        return "BrickColor.new(" .. tostring(u.Number) .. ")"
-    elseif typeof(u) == "NumberRange" then
-        -- NumberRange
-        return "NumberRange.new(" .. tostring(u.Min) .. ", " .. tostring(u.Max) .. ")"
-    elseif typeof(u) == "Region3" then
-        -- Region3
-        local center = u.CFrame.Position
-        local size = u.CFrame.Size
-        local vector1 = center - size / 2
-        local vector2 = center + size / 2
-        return "Region3.new(" .. u2s(vector1) .. ", " .. u2s(vector2) .. ")"
-    elseif typeof(u) == "Faces" then
-        -- Faces
-        local faces = {}
-        if u.Top then
-            table.insert(faces, "Enum.NormalId.Top")
-        end
-        if u.Bottom then
-            table.insert(faces, "Enum.NormalId.Bottom")
-        end
-        if u.Left then
-            table.insert(faces, "Enum.NormalId.Left")
-        end
-        if u.Right then
-            table.insert(faces, "Enum.NormalId.Right")
-        end
-        if u.Back then
-            table.insert(faces, "Enum.NormalId.Back")
-        end
-        if u.Front then
-            table.insert(faces, "Enum.NormalId.Front")
-        end
-        return "Faces.new(" .. table.concat(faces, ", ") .. ")"
-    elseif typeof(u) == "EnumItem" then
-        return tostring(u)
-    elseif typeof(u) == "Enums" then
-        return "Enum"
-    elseif typeof(u) == "Enum" then
-        return "Enum." .. tostring(u)
-    elseif typeof(u) == "RBXScriptSignal" then
-        return "nil --[[RBXScriptSignal]]"
-    elseif typeof(u) == "Vector3" then
-        return string.format("Vector3.new(%s, %s, %s)", v2s(u.X), v2s(u.Y), v2s(u.Z))
-    elseif typeof(u) == "CFrame" then
-        return string.format("CFrame.new(%s, %s)", v2s(u.Position), v2s(u.LookVector))
-    elseif typeof(u) == "DockWidgetPluginGuiInfo" then
-        return string.format("DockWidgetPluginGuiInfo(%s, %s, %s, %s, %s, %s, %s)", "Enum.InitialDockState.Right", v2s(u.InitialEnabled), v2s(u.InitialEnabledShouldOverrideRestore), v2s(u.FloatingXSize), v2s(u.FloatingYSize), v2s(u.MinWidth), v2s(u.MinHeight))
-    elseif typeof(u) == "PathWaypoint" then
-        return string.format("PathWaypoint.new(%s, %s)", v2s(u.Position), v2s(u.Action))
-    elseif typeof(u) == "UDim" then
-        return string.format("UDim.new(%s, %s)", v2s(u.Scale), v2s(u.Offset))
-    elseif typeof(u) == "UDim2" then
-        return string.format("UDim2.new(%s, %s, %s, %s)", v2s(u.X.Scale), v2s(u.X.Offset), v2s(u.Y.Scale), v2s(u.Y.Offset))
-    elseif typeof(u) == "Rect" then
-        return string.format("Rect.new(%s, %s)", v2s(u.Min), v2s(u.Max))
-    else
-        return string.format("nil --[[%s]]", typeof(u))
-    end
-end
-
---- Gets the player an instance is descended from
-function getplayer(instance)
-    for _, v in pairs(Players:GetPlayers()) do
-        if v.Character and (instance:IsDescendantOf(v.Character) or instance == v.Character) then
-            return v
-        end
-    end
-end
-
---- value-to-path (in table)
-function v2p(x, t, path, prev)
-    if not path then
-        path = ""
-    end
-    if not prev then
-        prev = {}
-    end
-    if rawequal(x, t) then
-        return true, ""
-    end
-    for i, v in pairs(t) do
-        if rawequal(v, x) then
-            if type(i) == "string" and i:match("^[%a_]+[%w_]*$") then
-                return true, (path .. "." .. i)
-            else
-                return true, (path .. "[" .. v2s(i) .. "]")
-            end
-        end
-        if type(v) == "table" then
-            local duplicate = false
-            for _, y in pairs(prev) do
-                if rawequal(y, v) then
-                    duplicate = true
-                end
-            end
-            if not duplicate then
-                table.insert(prev, t)
-                local found
-                found, p = v2p(x, v, path, prev)
-                if found then
-                    if type(i) == "string" and i:match("^[%a_]+[%w_]*$") then
-                        return true, "." .. i .. p
-                    else
-                        return true, "[" .. v2s(i) .. "]" .. p
-                    end
-                end
-            end
-        end
-    end
-    return false, ""
-end
-
---- format s: string, byte encrypt (for weird symbols)
-function formatstr(s, indentation)
-    if not indentation then
-        indentation = 0
-    end
-    local handled, reachedMax = handlespecials(s, indentation)
-    return '"' .. handled .. '"' .. (reachedMax and " --[[ MAXIMUM STRING SIZE REACHED, CHANGE '_G.SimpleSpyMaxStringSize' TO ADJUST MAXIMUM SIZE ]]" or "")
-end
-
---- Adds \'s to the text as a replacement to whitespace chars and other things because string.format can't yayeet
-function handlespecials(value, indentation)
-    local buildStr = {}
-    local i = 1
-    local char = string.sub(value, i, i)
-    local indentStr
-    while char ~= "" do
-        if char == '"' then
-            buildStr[i] = '\\"'
-        elseif char == "\\" then
-            buildStr[i] = "\\\\"
-        elseif char == "\n" then
-            buildStr[i] = "\\n"
-        elseif char == "\t" then
-            buildStr[i] = "\\t"
-        elseif string.byte(char) > 126 or string.byte(char) < 32 then
-            buildStr[i] = string.format("\\%d", string.byte(char))
-        else
-            buildStr[i] = char
-        end
-        i = i + 1
-        char = string.sub(value, i, i)
-        if i % 200 == 0 then
-            indentStr = indentStr or string.rep(" ", indentation + indent)
-            table.move({'"\n', indentStr, '... "'}, 1, 3, i, buildStr)
-            i += 3
-        end
-    end
-    return table.concat(buildStr)
-end
-
--- safe (ish) tostring
-function safetostring(v: any)
-    if typeof(v) == "userdata" or type(v) == "table" then
-        local mt = getrawmetatable(v)
-        local badtostring = mt and rawget(mt, "__tostring")
-        if mt and badtostring then
-            rawset(mt, "__tostring", nil)
-            local out = tostring(v)
-            rawset(mt, "__tostring", badtostring)
-            return out
-        end
-    end
-    return tostring(v)
-end
-
-
-    -- yes I copied this from simplespy because I am lazy
-    function v2s(v, l, p, n, vtv, i, pt, path, tables, tI)
-        if not tI then
-            tI = {0}
-        else
-            tI[1] += 1
-        end
-        if typeof(v) == "number" then
-            if v == math.huge then
-                return "math.huge"
-            elseif tostring(v):match("nan") then
-                return "0/0 --[[NaN]]"
-            end
-            return tostring(v)
-        elseif typeof(v) == "boolean" then
-            return tostring(v)
-        elseif typeof(v) == "string" then
-            return formatstr(v, l)
-        elseif typeof(v) == "function" then
-            return f2s(v)
-        elseif typeof(v) == "table" then
-            return t2s(v, l, p, n, vtv, i, pt, path, tables, tI)
-        elseif typeof(v) == "Instance" then
-            return i2p(v)
-        elseif typeof(v) == "userdata" then
-            return "newproxy(true)"
-        elseif type(v) == "userdata" then
-            return u2s(v)
-        elseif type(v) == "vector" then
-            return string.format("Vector3.new(%s, %s, %s)", v2s(v.X), v2s(v.Y), v2s(v.Z))
-        else
-            return "nil --[[" .. typeof(v) .. "]]"
-        end
-    end
-
-    function utility.value2string(...)
-        return v2s(...)
-    end
-
     local function badraycastnotevensure(pos, ignore) -- 1 ray > 1 obscuringthing | 100 rays < 1 obscuring thing
-        local hitparts = getPartsObscuringTarget(camera, {pos}, ignore or {})
+        local hitparts = getPartsObscuringTarget(currentcamera, {pos}, ignore or {})
         return hitparts
     end
 
@@ -1033,11 +559,11 @@ end
             
             return parts <= max
         else
-            local camp = camera.CFrame.p
+            local camp = currentcamera.CFrame.p
             local dist = (camp - pos).Magnitude
 
             local hitt = 0
-            local hit = raycast(raynew(camp, (pos - camp).unit * dist), {utility.mychar, ..., camera}, function(hit)
+            local hit = raycast(raynew(camp, (pos - camp).unit * dist), {utility.mychar, ..., currentcamera}, function(hit)
                 if hit.Name == "Window" then
                     return true
                 end
@@ -1062,7 +588,7 @@ end
         return (player.Team~=nil and player.Team==p0.Team) and player.Neutral == false or false
     end
     function utility.getDistanceFromMouse(position)
-        local screenpos, vis = worldToViewportPoint(camera, position)
+        local screenpos, vis = worldToViewportPoint(currentcamera, position)
         if vis and screenpos.Z > 0 then
             return (v2new(mouse.X, mouse.Y) - v2new(screenpos.X, screenpos.Y)).Magnitude
         end
@@ -1247,8 +773,6 @@ local function findLocal(lookinfor)
     return found
 end
 
-
-
 -- just so I can re-execute multiple times
 local storage = shared.gamer_storage or {}
 shared.gamer_storage = storage -- fuck off
@@ -1307,10 +831,38 @@ local gamelogic = storage.misc.gamelogic or findLocal({
     "setsprintdisable",
     "controllerstep",
     gc = true,
-    
 })[1]
 assert(gamelogic, kick, "Failed to find gamelogic module")
 storage.misc.gamelogic = gamelogic
+
+local particle = storage.misc.particle or findLocal({
+    "new",
+    "reset",
+    "step",
+    gc = true,
+    env = {
+        script = "Framework"
+    }
+})[1]
+assert(particle, kick, "Failed to find particle module")
+storage.misc.particle = particle
+
+local beamobject = storage.misc.beamobject or debug.getupvalue(particle.new, 1)
+assert(beamobject, kick, "Failed to find beamobject module")
+assert(beamobject.Destroy and beamobject.new and beamobject.step, kick, "Failed to find beamobject module")
+
+
+local camera = storage.misc.camera or findLocal({
+    "setfixedcam",
+    "setmenucam",
+    "setmenucf",
+    gc = true,
+    env = {
+        script = "Framework"
+    }
+})[1]
+assert(camera, kick, "Failed to find camera module")
+storage.misc.camera = camera
 
 do -- Character shit, pf renames characters so yeah umh
     local replication = storage.misc.replication or findLocal({
@@ -1339,7 +891,6 @@ do -- Character shit, pf renames characters so yeah umh
 
     char.humanoid = debug.getupvalue(char.getstate, 1)
 
-
     storage.char = storage.char or {}
 
     -- Infinite jump & JumpPower
@@ -1365,6 +916,105 @@ do -- Character shit, pf renames characters so yeah umh
         return storage.char.setbasewalkspeed(self, speed, ...)
     end
 
+
+    --[[
+
+    storage.char.loadgun = storage.char.loadgun or char.loadgun
+    local modifyData = storage.char.modifyData or debug.getupvalue(char.loadgun, 1)
+    storage.char.modifyData = modifyData
+    local getGunData = storage.char.getGunData or debug.getupvalue(char.loadgun, 2)
+    storage.char.getGunData = getGunData
+
+    char.loadgun = function(...)
+        local gunName, magShit, spareRounds, attachments, data, camodata, gunnumber = ...
+        print(gunName, magShit, spareRounds, attachments, data, camodata, gunnumber)
+        --local data = v33(u38(self), p296, p297);
+
+
+        return storage.char.loadgun(...)
+    end--]]
+
+    --[[for i,v in pairs(gamelogic.currentgun) do
+        print(i,v)
+    end--]]
+
+end
+
+
+do -- Workspace visuals
+    local color = Color3.fromRGB(175, 120, 180)
+    local function editInstance(v)
+        if v:IsA("BasePart") then
+            v.Material = Enum.Material.ForceField
+            v.Color = color
+        elseif v:IsA("FileMesh") then
+            v.TextureId = '6856098975' -- 6838365496
+            if v.Parent and v.Parent:IsA("BasePart") then
+                local c = v.Parent.Color
+                v.VertexColor = Vector3.new(color.r, color.g, color.b)
+            end
+        elseif v:IsA("RopeConstraint") then
+            v.Visible = false
+        elseif v:IsA("Texture") then
+            v.Transparency = 1
+        end
+    end
+
+
+    bindEvent(workspace.CurrentCamera.DescendantAdded, function(v)
+        if settings.gunVisuals then
+            editInstance(v)
+        end
+    end)
+    if (settings.gunVisuals) then
+        for i,v in pairs(workspace.CurrentCamera:GetDescendants()) do
+            editInstance(v)
+        end
+    end
+
+    bindEvent(workspace:WaitForChild("Ignore"):WaitForChild("DeadBody").DescendantAdded, function(v)
+        if settings.deadVisuals then
+            editInstance(v)
+        end
+    end)
+    if (settings.deadVisuals) then
+        for i,v in pairs(workspace.Ignore.DeadBody:GetDescendants()) do
+            editInstance(v)
+        end
+    end
+
+
+    local effect = storage.colorEffect or Instance.new("ColorCorrectionEffect")
+    effect.Enabled = settings.colorEffect
+    effect.Brightness = 0.4
+    effect.Contrast = 0.4
+    effect.Saturation = 0.1
+    effect.TintColor = color
+    storage.colorEffect = effect
+    effect.Parent = game:GetService("Lighting")
+end
+
+do -- camera
+
+    camera.shakespring.s = 0;
+    camera.shakespring.d = 1000;
+    camera.shakespring.t = Vector3.new()
+
+    camera.magspring.s = 12;
+    camera.magspring.d = 1;
+    camera.magspring.t = 0
+
+    camera.swayspring.s = 0;
+    camera.swayspring.d = 1000;
+    camera.swayspring.t = 0
+
+    camera.swayspeed.s = 0;
+    camera.swayspeed.d = 1000;
+    camera.swayspeed.t = 0;
+
+    camera.zanglespring.s = 0;
+    camera.offsetspring.s = 0;
+    
 
 end
 
@@ -1418,7 +1068,7 @@ do -- Network hook funcs
 
 end
 
-do -- Some silent aim shit
+do -- Metatable hooks
 
     local old_mt = storage.old_mt or {}
     storage.old_mt = old_mt
@@ -1456,7 +1106,7 @@ do -- Some silent aim shit
                         Head.Position.Z
                     )
 
-                    Dir = Dir + (Head.Parent.Torso.Velocity * (dist / bulletspeed))
+                    Dir = Dir + (Head.Parent.Torso.Velocity * (t * 2.1))
 
                     return CFrame.new(barrel.Position, Dir)
                 end
@@ -1466,6 +1116,22 @@ do -- Some silent aim shit
         return old_mt.__index(self, index)
     end)
     old_mt.__index = old_mt.__index or _nindex
+
+    local _neindex = hookmetamethod(game, "__newindex", function(...)
+        local self, index, value = ...
+        if checkcaller() then 
+            return old_mt.__newindex(self, index, value) 
+        end
+
+        if index == "FieldOfView" then
+            return old_mt.__newindex(self, index, value * 3)
+        end
+
+        return old_mt.__newindex(self, index, value)
+    end)
+    old_mt.__newindex = old_mt.__newindex or _neindex
+
+
 end
 
 local clearDrawn, newdrawing
@@ -1565,7 +1231,7 @@ do
         settings.saved = data
         return data
     end
-    settings:Load()
+    ---settings:Load()
 
     spawn(function()
         while main and main.enabled do
@@ -1579,11 +1245,11 @@ local esp = {} do
     local esp_settings = {}
 
     esp_settings.enabled = settings:Get("esp.enabled", true)
-    esp_settings.showteam = settings:Get("esp.showteam", true)
+    esp_settings.showteam = settings:Get("esp.showteam", false)
     
-    esp_settings.teamcolor = Color3.fromRGB(57,255,20) -- 121,255,97, 57,255,20
-    esp_settings.enemycolor = Color3.fromRGB(255,7,58) -- 238,38,37, 255,0,13, 255,7,58
-    esp_settings.visiblecolor = Color3.fromRGB(0, 141, 255) -- 0, 141, 255
+    esp_settings.teamcolor = Color3.fromRGB(155, 114, 170) -- 121,255,97, 57,255,20
+    esp_settings.enemycolor = Color3.fromRGB(234, 234, 234) -- 238,38,37, 255,0,13, 255,7,58
+    esp_settings.visiblecolor = Color3.fromRGB(234, 234, 234) -- 0, 141, 255
 
 
     esp_settings.size = settings:Get("esp.size", 16)
@@ -1596,7 +1262,7 @@ local esp = {} do
 
     esp_settings.showvisible = settings:Get("esp.showvisible", true)
 
-    esp_settings.yoffset = settings:Get("esp.yoffset", 0)
+    esp_settings.yoffset = settings:Get("esp.yoffset", 4)
 
     esp_settings.showhealth = settings:Get("esp.showhealth", true)
     esp_settings.showdistance = settings:Get("esp.showdistance", true)
@@ -1615,7 +1281,7 @@ local esp = {} do
         end;
         __newindex = function(self, index, value)
             if typeof(value) ~= "function" then
-                if esp_settings[index] then
+                if esp_settings[index] ~= nil then
                     local v = esp_settings[index]
                     if typeof(v) ~= "table" then
                         esp_settings[index] = value
@@ -1630,8 +1296,8 @@ local esp = {} do
         end;
     })
 
-    local camera = workspace.CurrentCamera
-    local worldToViewportPoint = camera.WorldToViewportPoint
+    local currentcamera = workspace.CurrentCamera
+    local worldToViewportPoint = currentcamera.WorldToViewportPoint
 
     local floor = math.floor
     local insert = table.insert
@@ -1660,15 +1326,18 @@ local esp = {} do
         if completeStop then return end
         if character == nil then return esp:Remove(player) end
         if root == nil then return esp:Remove(player) end
-        if esp.showteam~=true and isteam then return esp:Remove(player) end
+        if not esp.showteam and isteam then 
+            return esp:Remove(player) 
+        end
 
         if dist then
             if dist > esp.drawdistance then
                 return esp:Remove(player)
             end
         end
+        
 
-        local where, isvis = worldToViewportPoint(camera, (root.CFrame * esp.offset).p);
+        local where, isvis = worldToViewportPoint(currentcamera, (root.CFrame * esp.offset).p);
         --if not isvis then return esp:Remove(player) end
 
 
@@ -1749,11 +1418,11 @@ local boxes = {} do
     boxes_settings.enabled = settings:Get("boxes.enabled", true)
     boxes_settings.transparency = settings:Get("boxes.transparency", .2)
     boxes_settings.thickness = settings:Get("boxes.thickness", 1.5)
-    boxes_settings.showteam = settings:Get("boxes.showteam", true)
+    boxes_settings.showteam = settings:Get("boxes.showteam", false)
 
-    boxes_settings.teamcolor = Color3.fromRGB(57,255,20) -- 121,255,97,  57,255,20
-    boxes_settings.enemycolor = Color3.fromRGB(255,7,58) -- 238,38,37, 255,0,13, 255,7,58
-    boxes_settings.visiblecolor = Color3.fromRGB(0, 141, 255)
+    boxes_settings.teamcolor = Color3.fromRGB(155, 114, 170) -- 121,255,97,  57,255,20
+    boxes_settings.enemycolor = Color3.fromRGB(220,20,60) -- 238,38,37, 255,0,13, 255,7,58
+    boxes_settings.visiblecolor = Color3.fromRGB(234, 234, 234)
 
     boxes_settings.thirddimension = settings:Get("boxes.thirddimension", true)
 
@@ -1792,9 +1461,9 @@ local boxes = {} do
         end;
     })
 
-    local camera = workspace.CurrentCamera
+    local currentcamera = workspace.CurrentCamera
     local unpack = unpack
-    local worldToViewportPoint = camera.WorldToViewportPoint
+    local worldToViewportPoint = currentcamera.WorldToViewportPoint
     local v2new = Vector2.new
     local cfnew = CFrame.new
 
@@ -1842,7 +1511,9 @@ local boxes = {} do
         if character == nil then return boxes:Remove(player) end
         if root == nil then return boxes:Remove(player) end
         if not onscreen then return boxes:Remove(player) end
-        if boxes.showteam == false and isteam then return boxes:Remove(player) end
+        if not boxes.showteam and isteam then
+            return boxes:Remove(player) 
+        end
 
         local _3dimension = boxes.thirddimension
         if dist ~= nil then
@@ -1876,15 +1547,15 @@ local boxes = {} do
 
             local pos, size = root.CFrame, root.Size--lastsize--, v3new(5,8,0)
 
-            local topleftback, topleftbackvisible = worldToViewportPoint(camera, (pos * cfnew(-size.X, size.Y, size.Z)).p);
-            local toprightback, toprightbackvisible = worldToViewportPoint(camera, (pos * cfnew(size.X, size.Y, size.Z)).p);
-            local btmleftback, btmleftbackvisible = worldToViewportPoint(camera, (pos * cfnew(-size.X, -size.Y, size.Z)).p);
-            local btmrightback, btmrightbackvisible = worldToViewportPoint(camera, (pos * cfnew(size.X, -size.Y, size.Z)).p);
+            local topleftback, topleftbackvisible = worldToViewportPoint(currentcamera, (pos * cfnew(-size.X, size.Y, size.Z)).p);
+            local toprightback, toprightbackvisible = worldToViewportPoint(currentcamera, (pos * cfnew(size.X, size.Y, size.Z)).p);
+            local btmleftback, btmleftbackvisible = worldToViewportPoint(currentcamera, (pos * cfnew(-size.X, -size.Y, size.Z)).p);
+            local btmrightback, btmrightbackvisible = worldToViewportPoint(currentcamera, (pos * cfnew(size.X, -size.Y, size.Z)).p);
 
-            local topleftfront, topleftfrontvisible = worldToViewportPoint(camera, (pos * cfnew(-size.X, size.Y, -size.Z)).p);
-            local toprightfront, toprightfrontvisible = worldToViewportPoint(camera, (pos * cfnew(size.X, size.Y, -size.Z)).p);
-            local btmleftfront, btmleftfrontvisible = worldToViewportPoint(camera, (pos * cfnew(-size.X, -size.Y, -size.Z)).p);
-            local btmrightfront, btmrightfrontvisible = worldToViewportPoint(camera, (pos * cfnew(size.X, -size.Y, -size.Z)).p);
+            local topleftfront, topleftfrontvisible = worldToViewportPoint(currentcamera, (pos * cfnew(-size.X, size.Y, -size.Z)).p);
+            local toprightfront, toprightfrontvisible = worldToViewportPoint(currentcamera, (pos * cfnew(size.X, size.Y, -size.Z)).p);
+            local btmleftfront, btmleftfrontvisible = worldToViewportPoint(currentcamera, (pos * cfnew(-size.X, -size.Y, -size.Z)).p);
+            local btmrightfront, btmrightfrontvisible = worldToViewportPoint(currentcamera, (pos * cfnew(size.X, -size.Y, -size.Z)).p);
 
             local topleftback = v2new(topleftback.X, topleftback.Y)
             local toprightback = v2new(toprightback.X, toprightback.Y)
@@ -1927,10 +1598,10 @@ local boxes = {} do
 
             local pos, size = root.CFrame, root.Size
 
-            local topleft, topleftvisible = worldToViewportPoint(camera, (pos * cfnew(-size.X, size.Y, 0)).p);
-            local topright, toprightvisible = worldToViewportPoint(camera, (pos * cfnew(size.X, size.Y, 0)).p);
-            local btmleft, btmleftvisible = worldToViewportPoint(camera, (pos * cfnew(-size.X, -size.Y, 0)).p);
-            local btmright, btmrightvisible = worldToViewportPoint(camera, (pos * cfnew(size.X, -size.Y, 0)).p);
+            local topleft, topleftvisible = worldToViewportPoint(currentcamera, (pos * cfnew(-size.X, size.Y, 0)).p);
+            local topright, toprightvisible = worldToViewportPoint(currentcamera, (pos * cfnew(size.X, size.Y, 0)).p);
+            local btmleft, btmleftvisible = worldToViewportPoint(currentcamera, (pos * cfnew(-size.X, -size.Y, 0)).p);
+            local btmright, btmrightvisible = worldToViewportPoint(currentcamera, (pos * cfnew(size.X, -size.Y, 0)).p);
 
             local topleft = v2new(topleft.X, topleft.Y)
             local topright = v2new(topright.X, topright.Y)
@@ -2012,8 +1683,8 @@ local visuals = {} do
     end)
 
 
-    local camera = workspace.CurrentCamera
-    local worldToViewportPoint = camera.WorldToViewportPoint
+    local currentcamera = workspace.CurrentCamera
+    local worldToViewportPoint = currentcamera.WorldToViewportPoint
 
     local function remove(p)
         esp:Remove(p)
@@ -2058,9 +1729,13 @@ local visuals = {} do
                         local root = utility.getroot(character)
                         local humanoid = findFirstChildOfClass(character, "Humanoid")
                         if root and isDescendantOf(character, game) == true then
-                            local screenpos, onscreen = worldToViewportPoint(camera, root.Position)
+                            local screenpos, onscreen = worldToViewportPoint(currentcamera, root.Position)
                             local dist = utility.myroot and (utility.myroot.Position - root.Position).Magnitude
                             local isteam = (v.Team~=nil and v.Team==locpl.Team) and not v.Neutral or false
+                            if not boxes.showteam and not esp.showteam and isteam then
+                                remove(v)
+                                continue
+                            end
 
                             if boxes.enabled then -- Profilebegin is life
                                 boxes:Draw(v, character, root, humanoid, onscreen, isteam, dist)
@@ -2316,6 +1991,40 @@ Character:AddSlider({
 }, {1, 50, 1}, function(new)
     shais.jumppower = new
 end)
+
+local Visuals = hud:AddTab({
+    Text = "Visuals",
+})
+
+Visuals:AddLabel({Text = "Gun visuals will update when you respawn"})
+
+Visuals:AddToggle({
+    Text = "Color effect",
+    State = shais.colorEffect,
+}, function(new)
+    shais.colorEffect = new
+    storage.colorEffect.Enabled = new
+end)
+
+
+Visuals:AddToggle({
+    Text = "Gun visuals",
+    State = shais.gunVisuals,
+}, function(new)
+    shais.gunVisuals = new
+end)
+
+Visuals:AddToggle({
+    Text = "Dead visuals",
+    State = shais.deadVisuals,
+}, function(new)
+    shais.deadVisuals = new
+end)
+
+
+
+
+
 
 local Hud = hud:AddTab({
     Text = "Hud",
